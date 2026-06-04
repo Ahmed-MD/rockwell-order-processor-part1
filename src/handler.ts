@@ -64,6 +64,16 @@ async function processRecord(record: SQSRecord): Promise<void> {
   try {
     skuMappings = await getSkuMappings();
   } catch (err) {
+    // Bug fix 2: The original catch block was empty, silently discarding any
+    // ERP fetch error and leaving skuMappings undefined. The non-null assertion
+    // on line below would then throw a cryptic "Cannot read properties of
+    // undefined" crash instead of a meaningful ERP error, making production
+    // incidents nearly impossible to diagnose.
+    // Found by: test failure "surfaces ERP mapping-fetch failures" showed the
+    // received error message matched /Cannot read|undefined/ — a JS crash, not
+    // an ERP error — which pointed directly to the swallowed exception.
+    await updateOrderPhase(order.orderId, "A0", `ERP mapping fetch failed: ${(err as Error).message}`);
+    throw err;
   }
 
   // Step 5: Build and create sales order in ERP
@@ -113,7 +123,7 @@ async function processRecord(record: SQSRecord): Promise<void> {
     // finish before returning" and tracing the promise chain in handler.ts.
 
     await updateOrderPhase(order.orderId, "A1");
-    
+
   } catch (err) {
     console.error(`Failed to create ERP sales order for ${order.orderId}:`, err);
     await updateOrderPhase(order.orderId, "A0", `ERP creation failed: ${(err as Error).message}`);
