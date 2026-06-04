@@ -105,8 +105,15 @@ async function processRecord(record: SQSRecord): Promise<void> {
   try {
     const erpSalesOrderId = await createSalesOrder(erpOrder);
     console.log(`Created ERP sales order: ${erpSalesOrderId} for order ${order.orderId}`);
+    // Bug fix 1: The original call was missing `await`. Without it, the
+    // DynamoDB phase update is fire-and-forget — Lambda can return (and have
+    // its execution context frozen/terminated) before the write completes,
+    // leaving orders permanently stuck in phase A0 in production.
+    // Found by: reading the test failure "waits for post-ERP phase update to
+    // finish before returning" and tracing the promise chain in handler.ts.
 
-    updateOrderPhase(order.orderId, "A1");
+    await updateOrderPhase(order.orderId, "A1");
+    
   } catch (err) {
     console.error(`Failed to create ERP sales order for ${order.orderId}:`, err);
     await updateOrderPhase(order.orderId, "A0", `ERP creation failed: ${(err as Error).message}`);
