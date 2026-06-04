@@ -27,7 +27,15 @@ export async function getSkuMappings(): Promise<SkuMapping[]> {
     const data = (await response.json()) as { mappings: SkuMapping[] };
     allMappings.push(...data.mappings);
 
-    hasMore = data.mappings.length > 50;
+    // Bug fix 3: The original condition used `> 50` instead of `=== 50`.
+    // When the ERP returns exactly 50 items (a full page), pagination stops
+    // prematurely — the next page (which may contain more items) is never
+    // fetched. In production this would silently drop SKU mappings whenever
+    // a page boundary falls exactly on a multiple of 50, causing those line
+    // items to be skipped without any error.
+    // Found by: test "fetches every page of SKU mappings, including a full
+    // final-page boundary" — the name itself describes the edge case.
+    hasMore = data.mappings.length === 50;
 
     page++;
   }
